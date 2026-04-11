@@ -1,56 +1,75 @@
 /*
- * LUDO REALMS — board.js  (Visual Overhaul)
- * Premium canvas rendering: gradients, glows, 3D tokens, animations.
- * game.js is unchanged — this file only handles visuals + input.
+ * LUDO REALMS — board.js (Final Visual)
+ * Matches the Ludo King style from the reference image:
+ *  - Bright sky blue background
+ *  - Bold coloured yards with rounded corners and drop shadows
+ *  - Sandy beige track tiles with individual 3D raised effect
+ *  - Wooden corner decorations on yards
+ *  - Coloured home column tiles
+ *  - Chunky pawn-shaped tokens
+ *  - Safe square stars, power-up lightning bolts
+ *  - Classic centre triangle star
  */
 
 'use strict';
 
-// ── Palette ────────────────────────────────────────────────────────────────
+// ── Palette (matching reference image) ────────────────────────────────────
 
 const C = {
-  // Board surfaces
-  boardBg:    '#0e1726',
-  trackBg:    '#f0ebe0',
-  trackLine:  'rgba(0,0,0,0.12)',
-  outerBorder:'#1a2a45',
+  // Background
+  sky:         '#29B6F6',
 
-  // Yard fills (rich, deep tones)
-  redYard:    '#3d0a0a',
-  greenYard:  '#0a2a0e',
-  yellowYard: '#2a1e00',
-  blueYard:   '#0a1a3d',
+  // Track tiles
+  tile:        '#F5DEB3',   // warm sandy beige
+  tileTop:     '#FFF8E7',   // highlight (top edge of 3D tile)
+  tileBot:     '#C8A870',   // shadow (bottom edge of 3D tile)
+  tileBorder:  '#D4AA70',
 
-  // Yard inner glow colours
-  redGlow:    'rgba(229,57,53,0.5)',
-  greenGlow:  'rgba(67,160,71,0.5)',
-  yellowGlow: 'rgba(255,179,0,0.5)',
-  blueGlow:   'rgba(30,136,229,0.5)',
+  // Safe tile
+  safeTile:    '#FFF3CD',
+  safeGold:    '#F9A825',
 
-  // Token colours
-  red:    '#E53935',
-  green:  '#43A047',
-  yellow: '#FFB300',
-  blue:   '#1E88E5',
+  // Power-up tile
+  powerTile:   '#F3E5F5',
+  powerPurple: '#9C27B0',
 
-  // Home column tints
-  redCol:    'rgba(229,57,53,0.18)',
-  greenCol:  'rgba(67,160,71,0.18)',
-  yellowCol: 'rgba(255,179,0,0.18)',
-  blueCol:   'rgba(30,136,229,0.18)',
+  // Yard colours (solid, bold, matching image)
+  green:       '#4CAF50',
+  greenDark:   '#388E3C',
+  greenLight:  '#A5D6A7',
 
-  // Specials
-  safeGold:   '#D4A843',
-  safeGoldBg: 'rgba(212,168,67,0.15)',
-  powerUp:    '#7B1FA2',
-  powerUpBg:  'rgba(123,31,162,0.18)',
-  highlight:  'rgba(255,230,50,0.55)',
-  captureHL:  'rgba(229,57,53,0.55)',
-  white:      '#ffffff',
-  centreBg:   '#1a1008',
+  yellow:      '#FFC107',
+  yellowDark:  '#F57F17',
+  yellowLight: '#FFF9C4',
+
+  red:         '#F44336',
+  redDark:     '#C62828',
+  redLight:    '#FFCDD2',
+
+  blue:        '#2196F3',
+  blueDark:    '#1565C0',
+  blueLight:   '#BBDEFB',
+
+  // Home column tile tints
+  greenCol:    '#C8E6C9',
+  yellowCol:   '#FFF9C4',
+  redCol:      '#FFCDD2',
+  blueCol:     '#BBDEFB',
+
+  // Centre
+  centreRing:  '#ffffff',
+  pink:        '#E91E63',
+
+  // Wood
+  wood:        '#8D6E63',
+  woodDark:    '#5D4037',
+  woodLight:   '#BCAAA4',
+
+  white:       '#ffffff',
+  black:       '#000000',
 };
 
-// ── Track & grid definitions ───────────────────────────────────────────────
+// ── Grid definitions ──────────────────────────────────────────────────────
 
 const GRID = 15;
 
@@ -88,6 +107,9 @@ const YARD_SLOT_COORDS = {
 const SAFE_SET    = new Set([0,8,13,21,26,34,39,47]);
 const POWERUP_SET = new Set([12,25,38]);
 
+// Starting squares (index into track) — show arrow/dot
+const START_SET = new Set([0, 13, 26, 39]);
+
 // ── BoardRenderer ──────────────────────────────────────────────────────────
 
 class BoardRenderer {
@@ -97,11 +119,9 @@ class BoardRenderer {
     this.trackCoords = getTrackCoords();
     this.cellSize    = 0;
     this.gameEngine  = null;
-
-    // Animation state
-    this._animFrame  = null;
-    this._highlights = [];   // {r,c,type,moveIndex,pulse}
-    this._pulsePhase = 0;
+    this._highlights = [];
+    this._lastState  = null;
+    this._pulse      = 0;
 
     this._bindResize();
     this._bindTap();
@@ -109,9 +129,9 @@ class BoardRenderer {
     this._startPulse();
   }
 
-  attachEngine(engine) { this.gameEngine = engine; }
+  attachEngine(e) { this.gameEngine = e; }
 
-  // ── Resize ────────────────────────────────────────────────────────────────
+  // ── Resize ──────────────────────────────────────────────────────────────
 
   _bindResize() {
     window.addEventListener('resize', () => this._resize());
@@ -119,27 +139,29 @@ class BoardRenderer {
   }
 
   _resize() {
-    const area = document.getElementById('game-area');
+    const area  = document.getElementById('game-area');
     const avail = Math.min(area.clientWidth, area.clientHeight);
     const size  = Math.floor(avail * 0.97);
     this.canvas.width  = size;
     this.canvas.height = size;
     this.cellSize = size / GRID;
-    this.draw();
+    this.draw(this._lastState, this._highlights);
   }
 
-  // ── Pulse animation ───────────────────────────────────────────────────────
+  // ── Pulse ────────────────────────────────────────────────────────────────
 
   _startPulse() {
     const tick = () => {
-      this._pulsePhase = (this._pulsePhase + 0.06) % (Math.PI * 2);
-      if (this._highlights.length > 0) this.draw(this._lastState, this._highlights);
-      this._animFrame = requestAnimationFrame(tick);
+      this._pulse = (this._pulse + 0.07) % (Math.PI * 2);
+      if (this._highlights.length > 0) {
+        this.draw(this._lastState, this._highlights);
+      }
+      requestAnimationFrame(tick);
     };
-    this._animFrame = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
   }
 
-  // ── Input ─────────────────────────────────────────────────────────────────
+  // ── Input ────────────────────────────────────────────────────────────────
 
   _bindTap() {
     this.canvas.addEventListener('click', e => this._onTap(e));
@@ -151,17 +173,15 @@ class BoardRenderer {
 
   _onTap(e) {
     if (!this.gameEngine) return;
-    const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top)  * scaleY;
-    const col = Math.floor(x / this.cellSize);
-    const row = Math.floor(y / this.cellSize);
+    const rect  = this.canvas.getBoundingClientRect();
+    const sx    = this.canvas.width  / rect.width;
+    const sy    = this.canvas.height / rect.height;
+    const col   = Math.floor((e.clientX - rect.left) * sx / this.cellSize);
+    const row   = Math.floor((e.clientY - rect.top)  * sy / this.cellSize);
     this.gameEngine.handleBoardTap(row, col);
   }
 
-  // ── Main draw ─────────────────────────────────────────────────────────────
+  // ── Main draw ────────────────────────────────────────────────────────────
 
   draw(state = null, highlights = []) {
     this._lastState  = state;
@@ -170,377 +190,465 @@ class BoardRenderer {
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    this._drawBoardBg();
+    // Sky blue board background
+    ctx.fillStyle = C.sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw layers bottom to top
     this._drawYards();
-    this._drawTrackSquares();
-    this._drawHomeColumns();
+    this._drawTrackTiles();
+    this._drawHomeColumnTiles();
     this._drawCentre();
-    this._drawBorders();
+    this._drawWoodConnectors();
     this._drawHighlights(highlights);
 
     if (state) this._drawTokens(state);
   }
 
-  // ── Board background ──────────────────────────────────────────────────────
-
-  _drawBoardBg() {
-    const { ctx, canvas } = this;
-    // Deep dark board base
-    ctx.fillStyle = C.boardBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // ── Yards ─────────────────────────────────────────────────────────────────
+  // ── Yards ────────────────────────────────────────────────────────────────
 
   _drawYards() {
     const { ctx, cellSize } = this;
     const yards = [
-      { r:0, c:0,  bg:C.redYard,    glow:C.redGlow,    key:'red' },
-      { r:0, c:9,  bg:C.greenYard,  glow:C.greenGlow,  key:'green' },
-      { r:9, c:9,  bg:C.yellowYard, glow:C.yellowGlow, key:'yellow' },
-      { r:9, c:0,  bg:C.blueYard,   glow:C.blueGlow,   key:'blue' },
+      { r:0, c:0,  col:C.green,  dark:C.greenDark,  label:'green'  },
+      { r:0, c:9,  col:C.yellow, dark:C.yellowDark, label:'yellow' },
+      { r:9, c:0,  col:C.red,    dark:C.redDark,    label:'red'    },
+      { r:9, c:9,  col:C.blue,   dark:C.blueDark,   label:'blue'   },
     ];
 
-    yards.forEach(({ r, c, bg, glow, key }) => {
-      const x = c * cellSize, y = r * cellSize, s = 6 * cellSize;
+    yards.forEach(({ r, c, col, dark, label }) => {
+      const x = c * cellSize;
+      const y = r * cellSize;
+      const s = 6 * cellSize;
+      const rad = cellSize * 0.6;
 
-      // Dark yard fill
-      ctx.fillStyle = bg;
-      ctx.fillRect(x, y, s, s);
+      // Drop shadow
+      ctx.save();
+      ctx.shadowColor   = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur    = 12;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 5;
 
-      // Radial glow from centre of yard
-      const grad = ctx.createRadialGradient(
-        x + s/2, y + s/2, 0,
-        x + s/2, y + s/2, s * 0.7
-      );
-      grad.addColorStop(0, glow);
-      grad.addColorStop(1, 'transparent');
-      ctx.fillStyle = grad;
-      ctx.fillRect(x, y, s, s);
+      // Main yard fill — rounded rectangle
+      ctx.fillStyle = col;
+      this._roundRect(ctx, x + 2, y + 2, s - 4, s - 4, rad);
+      ctx.fill();
+      ctx.restore();
 
-      // Inner padding square
-      const pad = cellSize * 0.4;
-      const innerX = x + pad, innerY = y + pad;
-      const innerS = s - pad * 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      this._roundRect(innerX, innerY, innerS, innerS, cellSize * 0.3);
+      // Bottom edge (3D depth) — darker shade
+      ctx.fillStyle = dark;
+      this._roundRect(ctx, x + 2, y + s * 0.88, s - 4, s * 0.12, rad * 0.3);
       ctx.fill();
 
-      // Token slot circles
-      this._drawYardSlots(key, glow);
+      // Top highlight strip
+      const hGrad = ctx.createLinearGradient(x, y, x, y + s * 0.3);
+      hGrad.addColorStop(0, 'rgba(255,255,255,0.35)');
+      hGrad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = hGrad;
+      this._roundRect(ctx, x + 2, y + 2, s - 4, s * 0.4, rad);
+      ctx.fill();
+
+      // Inner white panel (the slot area)
+      const pad = cellSize * 0.55;
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      this._roundRect(ctx, x + pad, y + pad, s - pad*2, s - pad*2, cellSize * 0.35);
+      ctx.fill();
+
+      // Draw the 4 token slot circles
+      this._drawYardSlots(label, col, dark);
     });
   }
 
-  _drawYardSlots(colour, glowColour) {
+  _drawYardSlots(colour, col, dark) {
     const { ctx, cellSize } = this;
-    const slots = YARD_SLOT_COORDS[colour];
-    const colMap = { red:C.red, green:C.green, yellow:C.yellow, blue:C.blue };
-    const col = colMap[colour];
-
-    slots.forEach(([r, c]) => {
+    YARD_SLOT_COORDS[colour].forEach(([r, c]) => {
       const cx = c * cellSize + cellSize / 2;
       const cy = r * cellSize + cellSize / 2;
-      const radius = cellSize * 0.38;
+      const R  = cellSize * 0.37;
 
-      // Slot shadow/ring
+      // Slot shadow
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.3)';
+      ctx.shadowBlur  = 4;
+      ctx.shadowOffsetY = 2;
+
+      // Slot outer ring
       ctx.beginPath();
-      ctx.arc(cx, cy, radius + 2, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.fillStyle = dark;
       ctx.fill();
+      ctx.restore();
 
-      // Slot outer ring (player colour)
+      // Slot main fill
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      const ringGrad = ctx.createRadialGradient(cx-radius*0.2, cy-radius*0.2, 0, cx, cy, radius);
-      ringGrad.addColorStop(0, this._lighten(col, 40));
-      ringGrad.addColorStop(1, col);
-      ctx.fillStyle = ringGrad;
+      ctx.arc(cx, cy, R * 0.85, 0, Math.PI * 2);
+      ctx.fillStyle = col;
       ctx.fill();
 
       // Slot inner recess
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 0.62, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.arc(cx, cy, R * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fill();
 
-      // Inner recess highlight
+      // Slot shine
       ctx.beginPath();
-      ctx.arc(cx - radius*0.15, cy - radius*0.15, radius * 0.35, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.arc(cx - R*0.18, cy - R*0.18, R * 0.28, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.fill();
     });
   }
 
-  // ── Track squares ─────────────────────────────────────────────────────────
+  // ── Track tiles ──────────────────────────────────────────────────────────
 
-  _drawTrackSquares() {
+  _drawTrackTiles() {
     const { ctx, cellSize } = this;
     this.trackCoords.forEach(([r, c], i) => {
-      const x = c * cellSize, y = r * cellSize, s = cellSize;
+      const x = c * cellSize;
+      const y = r * cellSize;
+      const s = cellSize;
+      const pad = s * 0.04;
+      const rad = s * 0.18;
 
-      // Track square base
-      ctx.fillStyle = C.trackBg;
-      ctx.fillRect(x, y, s, s);
+      let tileFill = C.tile;
+      if (SAFE_SET.has(i))    tileFill = C.safeTile;
+      if (POWERUP_SET.has(i)) tileFill = C.powerTile;
 
+      this._draw3DTile(x + pad, y + pad, s - pad*2, s - pad*2, rad, tileFill);
+
+      // Icons on special squares
+      if (SAFE_SET.has(i)) {
+        this._drawStar(x + s/2, y + s/2, s * 0.28, 5, C.safeGold);
+      }
       if (POWERUP_SET.has(i)) {
-        // Power-up square: rich purple tint
-        ctx.fillStyle = C.powerUpBg;
-        ctx.fillRect(x, y, s, s);
-        this._drawPowerUpIcon(x + s/2, y + s/2, s * 0.28);
-      } else if (SAFE_SET.has(i)) {
-        // Safe square: gold tint + star
-        ctx.fillStyle = C.safeGoldBg;
-        ctx.fillRect(x, y, s, s);
-        this._drawStar(x + s/2, y + s/2, s * 0.32, 5);
+        this._drawLightning(x + s/2, y + s/2, s * 0.28);
+      }
+
+      // Starting square arrow indicators
+      if (START_SET.has(i)) {
+        const arrows  = { 0:'▼', 13:'▶', 26:'▲', 39:'◀' };
+        const colours = { 0:C.red, 13:C.green, 26:C.yellow, 39:C.blue };
+        ctx.fillStyle = colours[i] + 'CC';
+        ctx.font      = `bold ${Math.floor(s*0.36)}px Arial`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(arrows[i], x + s/2, y + s/2);
       }
     });
   }
 
-  // ── Home columns ──────────────────────────────────────────────────────────
+  // ── Home column tiles ─────────────────────────────────────────────────────
 
-  _drawHomeColumns() {
+  _drawHomeColumnTiles() {
     const { ctx, cellSize } = this;
+
     const cols = [
-      { coords: [[1,7],[2,7],[3,7],[4,7],[5,7]], fill: C.redCol,    arrow: '▲', colour: C.red },
-      { coords: [[7,9],[7,10],[7,11],[7,12],[7,13]], fill: C.greenCol, arrow: '▶', colour: C.green },
-      { coords: [[9,7],[10,7],[11,7],[12,7],[13,7]], fill: C.yellowCol,arrow: '▼', colour: C.yellow },
-      { coords: [[7,1],[7,2],[7,3],[7,4],[7,5]], fill: C.blueCol,   arrow: '◀', colour: C.blue },
+      { cells:[[1,7],[2,7],[3,7],[4,7],[5,7]], fill:C.redCol,    arrow:'▲', acol:C.red    },
+      { cells:[[7,9],[7,10],[7,11],[7,12],[7,13]], fill:C.greenCol, arrow:'▶', acol:C.green  },
+      { cells:[[9,7],[10,7],[11,7],[12,7],[13,7]], fill:C.yellowCol,arrow:'▼', acol:C.yellow },
+      { cells:[[7,1],[7,2],[7,3],[7,4],[7,5]], fill:C.blueCol,   arrow:'◀', acol:C.blue   },
     ];
 
-    cols.forEach(({ coords, fill, arrow, colour }) => {
-      coords.forEach(([r, c]) => {
-        const x = c * cellSize, y = r * cellSize, s = cellSize;
+    cols.forEach(({ cells, fill, arrow, acol }) => {
+      cells.forEach(([r, c]) => {
+        const x   = c * cellSize;
+        const y   = r * cellSize;
+        const s   = cellSize;
+        const pad = s * 0.04;
+        const rad = s * 0.18;
+        this._draw3DTile(x + pad, y + pad, s - pad*2, s - pad*2, rad, fill);
 
-        // Base track colour
-        ctx.fillStyle = C.trackBg;
-        ctx.fillRect(x, y, s, s);
-
-        // Coloured tint
-        ctx.fillStyle = fill;
-        ctx.fillRect(x, y, s, s);
-
-        // Subtle arrow
-        ctx.fillStyle = colour + '55';
-        ctx.font = `bold ${Math.floor(s * 0.38)}px Rajdhani, sans-serif`;
+        // Small arrow
+        ctx.fillStyle = acol + '99';
+        ctx.font      = `bold ${Math.floor(s * 0.34)}px Arial`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(arrow, x + s/2, y + s/2);
       });
     });
   }
 
-  // ── Centre ────────────────────────────────────────────────────────────────
+  // ── 3D tile helper ────────────────────────────────────────────────────────
+
+  _draw3DTile(x, y, w, h, r, fill) {
+    const { ctx } = this;
+    const depth = h * 0.1;
+
+    // Bottom shadow slab
+    ctx.fillStyle = this._darken(fill, 30);
+    this._roundRect(ctx, x, y + depth, w, h, r);
+    ctx.fill();
+
+    // Main face
+    ctx.fillStyle = fill;
+    this._roundRect(ctx, x, y, w, h - depth, r);
+    ctx.fill();
+
+    // Top shine strip
+    const grad = ctx.createLinearGradient(x, y, x, y + (h - depth) * 0.5);
+    grad.addColorStop(0, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    this._roundRect(ctx, x, y, w, (h - depth) * 0.55, r);
+    ctx.fill();
+  }
+
+  // ── Centre star ───────────────────────────────────────────────────────────
 
   _drawCentre() {
     const { ctx, cellSize } = this;
-    const x = 6 * cellSize, y = 6 * cellSize, s = 3 * cellSize;
-    const cx = x + s/2, cy = y + s/2;
+    const x  = 6 * cellSize;
+    const y  = 6 * cellSize;
+    const s  = 3 * cellSize;
+    const cx = x + s / 2;
+    const cy = y + s / 2;
 
-    // Dark base
-    ctx.fillStyle = C.centreBg;
-    ctx.fillRect(x, y, s, s);
+    // White background
+    ctx.fillStyle = C.white;
+    this._roundRect(ctx, x, y, s, s, cellSize * 0.25);
+    ctx.fill();
 
-    // Four triangles with gradient fills
+    // Four triangles
     const tris = [
-      { col: C.red,    pts: [[x,y],[x+s,y],[cx,cy]] },
-      { col: C.green,  pts: [[x+s,y],[x+s,y+s],[cx,cy]] },
-      { col: C.yellow, pts: [[x+s,y+s],[x,y+s],[cx,cy]] },
-      { col: C.blue,   pts: [[x,y+s],[x,y],[cx,cy]] },
+      { col: C.red,    pts:[[x,y],[x+s,y],[cx,cy]] },
+      { col: C.green,  pts:[[x+s,y],[x+s,y+s],[cx,cy]] },
+      { col: C.yellow, pts:[[x+s,y+s],[x,y+s],[cx,cy]] },
+      { col: C.blue,   pts:[[x,y+s],[x,y],[cx,cy]] },
     ];
 
     tris.forEach(({ col, pts }) => {
-      // Gradient from edge to centre
-      const grad = ctx.createLinearGradient(
-        (pts[0][0]+pts[1][0])/2, (pts[0][1]+pts[1][1])/2,
-        cx, cy
-      );
-      grad.addColorStop(0, col + 'CC');
-      grad.addColorStop(1, col + '44');
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       ctx.lineTo(pts[1][0], pts[1][1]);
       ctx.lineTo(pts[2][0], pts[2][1]);
       ctx.closePath();
-      ctx.fillStyle = grad;
+      ctx.fillStyle = col;
       ctx.fill();
     });
 
-    // Dividing lines between triangles
-    ctx.strokeStyle = C.centreBg;
-    ctx.lineWidth = 1;
-    [[x,y],[x+s,y],[x+s,y+s],[x,y+s]].forEach(([px,py]) => {
-      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(px,py); ctx.stroke();
+    // White dividers
+    ctx.strokeStyle = C.white;
+    ctx.lineWidth   = 2;
+    [[x,y],[x+s,y],[x+s,y+s],[x,y+s]].forEach(([px, py]) => {
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
     });
 
-    // Centre home circle
-    const homeGrad = ctx.createRadialGradient(cx - s*0.08, cy - s*0.08, 0, cx, cy, s * 0.22);
-    homeGrad.addColorStop(0, '#e8d4a0');
-    homeGrad.addColorStop(0.6, '#c8a840');
-    homeGrad.addColorStop(1, '#8a6010');
+    // Centre circle
+    ctx.save();
+    ctx.shadowColor   = 'rgba(0,0,0,0.2)';
+    ctx.shadowBlur    = 6;
+    ctx.shadowOffsetY = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, s * 0.22, 0, Math.PI * 2);
-    ctx.fillStyle = homeGrad;
+    ctx.arc(cx, cy, cellSize * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = C.white;
+    ctx.fill();
+    ctx.restore();
+
+    // Colour ring inside centre circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, cellSize * 0.42, 0, Math.PI * 2);
+    // Rainbow ring segments
+    const colours = [C.red, C.green, C.yellow, C.blue];
+    colours.forEach((col, i) => {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, cellSize * 0.42, (i * Math.PI/2) - Math.PI/2, ((i+1) * Math.PI/2) - Math.PI/2);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+    });
+
+    // Inner white dot
+    ctx.beginPath();
+    ctx.arc(cx, cy, cellSize * 0.18, 0, Math.PI * 2);
+    ctx.fillStyle = C.white;
     ctx.fill();
 
-    // Star inside centre circle
-    this._drawStar(cx, cy, s * 0.14, 6);
+    // Star in centre
+    this._drawStar(cx, cy, cellSize * 0.13, 4, C.white);
   }
 
-  // ── Borders & grid ────────────────────────────────────────────────────────
+  // ── Wooden connectors ─────────────────────────────────────────────────────
+  // The plank-like bridges between yard corners and track
 
-  _drawBorders() {
-    const { ctx, canvas, cellSize } = this;
+  _drawWoodConnectors() {
+    const { ctx, cellSize } = this;
 
-    // Subtle grid lines only on track squares
-    ctx.strokeStyle = C.trackLine;
-    ctx.lineWidth = 0.5;
-    this.trackCoords.forEach(([r, c]) => {
-      ctx.strokeRect(c*cellSize + 0.5, r*cellSize + 0.5, cellSize - 1, cellSize - 1);
-    });
-    // Home cols
-    const homeCells = [
-      ...[[1,7],[2,7],[3,7],[4,7],[5,7]],
-      ...[[7,9],[7,10],[7,11],[7,12],[7,13]],
-      ...[[9,7],[10,7],[11,7],[12,7],[13,7]],
-      ...[[7,1],[7,2],[7,3],[7,4],[7,5]],
+    // Wood plank positions — the squares between yards and track corners
+    const woodSquares = [
+      [0,5],[0,6],[5,0],[6,0],     // top-left corner
+      [0,8],[0,9],[5,14],[6,14],   // top-right corner
+      [8,0],[9,0],[14,5],[14,6],   // bottom-left corner
+      [8,14],[9,14],[14,8],[14,9], // bottom-right corner
     ];
-    homeCells.forEach(([r,c]) => {
-      ctx.strokeRect(c*cellSize+0.5, r*cellSize+0.5, cellSize-1, cellSize-1);
-    });
 
-    // Yard borders — glowing coloured outline
-    const yardBorders = [
-      { r:0, c:0, col:C.red,    glow:C.redGlow },
-      { r:0, c:9, col:C.green,  glow:C.greenGlow },
-      { r:9, c:9, col:C.yellow, glow:C.yellowGlow },
-      { r:9, c:0, col:C.blue,   glow:C.blueGlow },
-    ];
-    yardBorders.forEach(({ r, c, col, glow }) => {
-      const x = c*cellSize, y = r*cellSize, s = 6*cellSize;
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 2;
-      ctx.shadowColor = glow;
-      ctx.shadowBlur = 8;
-      ctx.strokeRect(x+1, y+1, s-2, s-2);
-      ctx.shadowBlur = 0;
-    });
+    woodSquares.forEach(([r, c]) => {
+      const x   = c * cellSize;
+      const y   = r * cellSize;
+      const s   = cellSize;
+      const pad = s * 0.05;
 
-    // Outer board border
-    ctx.strokeStyle = C.outerBorder;
-    ctx.lineWidth = 2;
-    ctx.shadowBlur = 0;
-    ctx.strokeRect(1, 1, canvas.width-2, canvas.height-2);
+      // Wood plank base
+      ctx.fillStyle = C.wood;
+      this._roundRect(ctx, x + pad, y + pad, s - pad*2, s - pad*2, s * 0.15);
+      ctx.fill();
+
+      // Wood grain lines
+      ctx.strokeStyle = C.woodDark;
+      ctx.lineWidth   = 0.8;
+      for (let i = 0; i < 3; i++) {
+        const ly = y + pad + (s - pad*2) * (0.25 + i * 0.25);
+        ctx.beginPath();
+        ctx.moveTo(x + pad * 2, ly);
+        ctx.lineTo(x + s - pad * 2, ly);
+        ctx.stroke();
+      }
+
+      // Top highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      this._roundRect(ctx, x + pad, y + pad, s - pad*2, (s - pad*2) * 0.35, s * 0.15);
+      ctx.fill();
+    });
   }
 
-  // ── Highlights (legal move squares) ───────────────────────────────────────
+  // ── Highlights ────────────────────────────────────────────────────────────
 
   _drawHighlights(highlights) {
-    const { ctx, cellSize, _pulsePhase } = this;
-    const pulse = 0.55 + 0.25 * Math.sin(_pulsePhase);
+    const { ctx, cellSize, _pulse } = this;
+    const alpha = 0.5 + 0.3 * Math.sin(_pulse);
 
     highlights.forEach(({ r, c, type }) => {
       const x = c * cellSize, y = r * cellSize, s = cellSize;
+      const pad = s * 0.06;
 
-      if (type === 'capture') {
-        ctx.fillStyle = `rgba(229,57,53,${pulse * 0.6})`;
-      } else {
-        ctx.fillStyle = `rgba(255,220,30,${pulse * 0.55})`;
-      }
-      ctx.fillRect(x, y, s, s);
+      ctx.fillStyle = type === 'capture'
+        ? `rgba(244,67,54,${alpha * 0.7})`
+        : `rgba(255,235,59,${alpha * 0.7})`;
+      this._roundRect(ctx, x + pad, y + pad, s - pad*2, s - pad*2, s * 0.2);
+      ctx.fill();
 
-      // Animated border
       ctx.strokeStyle = type === 'capture'
-        ? `rgba(255,80,80,${pulse})`
-        : `rgba(255,220,30,${pulse})`;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x+1, y+1, s-2, s-2);
+        ? `rgba(244,67,54,${alpha})`
+        : `rgba(255,215,0,${alpha})`;
+      ctx.lineWidth = 2.5;
+      this._roundRect(ctx, x + pad, y + pad, s - pad*2, s - pad*2, s * 0.2);
+      ctx.stroke();
     });
   }
 
-  // ── Tokens ────────────────────────────────────────────────────────────────
+  // ── Tokens — chunky pawn shape ────────────────────────────────────────────
 
   _drawTokens(state) {
     state.players.forEach(player => {
       player.tokens.forEach((pos, ti) => {
         if (pos === 999) return;
 
-        let gridPos = null;
+        let gridPos;
         if (pos === -1) {
           gridPos = YARD_SLOT_COORDS[player.colour][ti];
         } else if (pos >= 100) {
-          const homeBase = { red:100, green:200, yellow:300, blue:400 }[player.colour];
-          const step = pos - homeBase;
-          gridPos = HOME_COL_COORDS[player.colour][step];
+          const base = { red:100, green:200, yellow:300, blue:400 }[player.colour];
+          gridPos = HOME_COL_COORDS[player.colour][pos - base];
         } else {
           gridPos = this.trackCoords[pos];
         }
 
         if (!gridPos) return;
         const [r, c] = gridPos;
-
-        const offset = this._stackOffset(state, player.colour, pos, ti);
-        const cx = c * this.cellSize + this.cellSize/2 + offset.x;
-        const cy = r * this.cellSize + this.cellSize/2 + offset.y;
-
-        // Glow for active player's tokens
+        const off = this._stackOffset(state, player.colour, pos, ti);
+        const cx  = c * this.cellSize + this.cellSize / 2 + off.x;
+        const cy  = r * this.cellSize + this.cellSize / 2 + off.y;
         const isActive = state.activePlayer.colour === player.colour;
-        this._drawToken3D(cx, cy, player.colour, this.cellSize * 0.33, isActive);
+
+        this._drawPawn(cx, cy, player.colour, this.cellSize * 0.36, isActive);
       });
     });
 
     this._drawFinishedTokens(state);
   }
 
-  _drawToken3D(cx, cy, colour, radius, glowing) {
+  _drawPawn(cx, cy, colour, size, glowing) {
     const { ctx } = this;
-    const colMap   = { red:C.red, green:C.green, yellow:C.yellow, blue:C.blue };
+
+    const colMap = {
+      red:    { main:C.red,    dark:C.redDark,    light:'#FF8A80' },
+      green:  { main:C.green,  dark:C.greenDark,  light:'#B9F6CA' },
+      yellow: { main:C.yellow, dark:C.yellowDark, light:'#FFE57F' },
+      blue:   { main:C.blue,   dark:C.blueDark,   light:'#82B1FF' },
+    };
     const col = colMap[colour];
 
-    // Drop shadow
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur  = 6;
-    ctx.shadowOffsetX = 1.5;
-    ctx.shadowOffsetY = 3;
 
-    // Outer glow for active player
+    // Glow for active player
     if (glowing) {
-      ctx.shadowColor = col;
-      ctx.shadowBlur  = 12;
+      ctx.shadowColor   = col.main;
+      ctx.shadowBlur    = 14;
+      ctx.shadowOffsetY = 0;
+    } else {
+      ctx.shadowColor   = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur    = 5;
+      ctx.shadowOffsetY = 2;
     }
 
-    // Main sphere gradient (3D look)
-    const grad = ctx.createRadialGradient(
-      cx - radius * 0.3, cy - radius * 0.35, radius * 0.05,
-      cx, cy, radius
-    );
-    grad.addColorStop(0,   this._lighten(col, 60));
-    grad.addColorStop(0.4, col);
-    grad.addColorStop(1,   this._darken(col, 40));
+    const s = size; // shorthand
+
+    // ── Pawn body path ─────────────────────────────────────────────────
+    // Drawn top-to-bottom: head → neck → base
+
+    // Head (circle)
+    const headR  = s * 0.38;
+    const headCY = cy - s * 0.55;
 
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
+    ctx.arc(cx, headCY, headR, 0, Math.PI * 2);
+    const headGrad = ctx.createRadialGradient(
+      cx - headR * 0.3, headCY - headR * 0.3, 0,
+      cx, headCY, headR
+    );
+    headGrad.addColorStop(0,   col.light);
+    headGrad.addColorStop(0.5, col.main);
+    headGrad.addColorStop(1,   col.dark);
+    ctx.fillStyle = headGrad;
     ctx.fill();
+
+    // Neck (thin rectangle)
+    const neckW  = s * 0.18;
+    const neckH  = s * 0.22;
+    const neckY  = cy - s * 0.25;
+    ctx.fillStyle = col.dark;
+    ctx.fillRect(cx - neckW/2, neckY, neckW, neckH);
+
+    // Base (wide oval)
+    const baseRX = s * 0.52;
+    const baseRY = s * 0.22;
+    const baseY  = cy + s * 0.1;
+
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY, baseRX, baseRY, 0, 0, Math.PI * 2);
+    const baseGrad = ctx.createLinearGradient(cx, baseY - baseRY, cx, baseY + baseRY);
+    baseGrad.addColorStop(0, col.main);
+    baseGrad.addColorStop(1, col.dark);
+    ctx.fillStyle = baseGrad;
+    ctx.fill();
+
     ctx.restore();
 
-    // Specular highlight (top-left glint)
-    const specGrad = ctx.createRadialGradient(
-      cx - radius * 0.28, cy - radius * 0.3, 0,
-      cx - radius * 0.28, cy - radius * 0.3, radius * 0.55
-    );
-    specGrad.addColorStop(0,   'rgba(255,255,255,0.6)');
-    specGrad.addColorStop(0.4, 'rgba(255,255,255,0.15)');
-    specGrad.addColorStop(1,   'rgba(255,255,255,0)');
+    // Shine on head
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = specGrad;
+    ctx.arc(cx - headR * 0.25, headCY - headR * 0.25, headR * 0.32, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.fill();
 
-    // Thin border ring
+    // Thin outline on entire pawn (for definition)
+    // Head outline
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 0.8;
+    ctx.arc(cx, headCY, headR, 0, Math.PI * 2);
+    ctx.strokeStyle = col.dark;
+    ctx.lineWidth   = 0.8;
+    ctx.stroke();
+
+    // Base outline
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY, baseRX, baseRY, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
 
@@ -549,18 +657,18 @@ class BoardRenderer {
     const cx = 7.5 * cellSize;
     const cy = 7.5 * cellSize;
     const offsets = [
-      { x:-cellSize*0.28, y:-cellSize*0.28 },
-      { x: cellSize*0.28, y:-cellSize*0.28 },
-      { x:-cellSize*0.28, y: cellSize*0.28 },
-      { x: cellSize*0.28, y: cellSize*0.28 },
+      { x:-cellSize*0.22, y:-cellSize*0.22 },
+      { x: cellSize*0.22, y:-cellSize*0.22 },
+      { x:-cellSize*0.22, y: cellSize*0.22 },
+      { x: cellSize*0.22, y: cellSize*0.22 },
     ];
     state.players.forEach((p, pi) => {
       p.tokens.forEach((pos, ti) => {
         if (pos !== 999) return;
         const off = offsets[ti] || offsets[0];
-        const mx = cx + off.x * (pi % 2 === 0 ? -0.6 : 0.6);
-        const my = cy + off.y * (pi < 2 ? -0.6 : 0.6);
-        this._drawToken3D(mx, my, p.colour, cellSize * 0.13, false);
+        const mx  = cx + off.x * (pi % 2 === 0 ? -0.5 : 0.5);
+        const my  = cy + off.y * (pi < 2 ? -0.5 : 0.5);
+        this._drawPawn(mx, my, p.colour, cellSize * 0.2, false);
       });
     });
   }
@@ -568,23 +676,20 @@ class BoardRenderer {
   _stackOffset(state, colour, pos, tokenIndex) {
     if (pos === -1 || pos === 999) return { x:0, y:0 };
     const player = state.players.find(p => p.colour === colour);
-    const count = player.tokens.filter(t => t === pos).length;
+    const count  = player.tokens.filter(t => t === pos).length;
     if (count < 2) return { x:0, y:0 };
-    const s = this.cellSize * 0.16;
+    const s = this.cellSize * 0.15;
     return tokenIndex % 2 === 0 ? { x:-s, y:-s } : { x:s, y:s };
   }
 
   // ── Icon helpers ──────────────────────────────────────────────────────────
 
-  _drawStar(cx, cy, radius, points) {
+  _drawStar(cx, cy, radius, points, colour) {
     const { ctx } = this;
     const step = Math.PI / points;
     ctx.save();
-
-    // Glow
-    ctx.shadowColor = C.safeGold;
-    ctx.shadowBlur  = 6;
-
+    ctx.shadowColor = colour;
+    ctx.shadowBlur  = 4;
     ctx.beginPath();
     for (let i = 0; i < points * 2; i++) {
       const r = i % 2 === 0 ? radius : radius * 0.42;
@@ -594,58 +699,46 @@ class BoardRenderer {
         : ctx.lineTo(cx + r*Math.cos(a), cy + r*Math.sin(a));
     }
     ctx.closePath();
-    ctx.fillStyle   = C.safeGold;
+    ctx.fillStyle = colour;
     ctx.fill();
-    ctx.shadowBlur  = 0;
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    ctx.lineWidth   = 0.5;
-    ctx.stroke();
     ctx.restore();
   }
 
-  _drawPowerUpIcon(cx, cy, size) {
+  _drawLightning(cx, cy, size) {
     const { ctx } = this;
     ctx.save();
-    ctx.shadowColor = C.powerUp;
+    ctx.shadowColor = C.powerPurple;
     ctx.shadowBlur  = 8;
-    ctx.fillStyle   = '#CE93D8';
-    ctx.font        = `bold ${Math.floor(size * 2)}px Arial`;
+    ctx.fillStyle   = C.powerPurple;
+    ctx.font        = `bold ${Math.floor(size * 2.2)}px Arial`;
     ctx.textAlign   = 'center';
     ctx.textBaseline= 'middle';
     ctx.fillText('⚡', cx, cy);
     ctx.restore();
   }
 
-  // ── Canvas utility ────────────────────────────────────────────────────────
+  // ── Canvas helpers ────────────────────────────────────────────────────────
 
-  _roundRect(x, y, w, h, r) {
-    const { ctx } = this;
+  _roundRect(ctx, x, y, w, h, r) {
+    const radius = Math.min(r, w/2, h/2);
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
     ctx.closePath();
   }
 
-  _lighten(hex, amount) {
-    const num = parseInt(hex.replace('#',''), 16);
-    const r = Math.min(255, (num >> 16) + amount);
-    const g = Math.min(255, ((num >> 8) & 0xFF) + amount);
-    const b = Math.min(255, (num & 0xFF) + amount);
-    return `rgb(${r},${g},${b})`;
-  }
-
-  _darken(hex, amount) {
-    const num = parseInt(hex.replace('#',''), 16);
-    const r = Math.max(0, (num >> 16) - amount);
-    const g = Math.max(0, ((num >> 8) & 0xFF) - amount);
-    const b = Math.max(0, (num & 0xFF) - amount);
+  _darken(hex, amt) {
+    const n = parseInt(hex.replace('#',''), 16);
+    const r = Math.max(0, (n>>16) - amt);
+    const g = Math.max(0, ((n>>8)&0xFF) - amt);
+    const b = Math.max(0, (n&0xFF) - amt);
     return `rgb(${r},${g},${b})`;
   }
 }
@@ -654,16 +747,12 @@ class BoardRenderer {
 
 class GameController {
   constructor() {
-    this.renderer = new BoardRenderer('board-canvas');
-    this.state    = null;
-    this.engine   = null;
+    this.renderer    = new BoardRenderer('board-canvas');
+    this.state       = null;
+    this.engine      = null;
     this._highlights = [];
 
     this.renderer.attachEngine(this);
-    this._bindUI();
-  }
-
-  _bindUI() {
     document.getElementById('btn-roll').addEventListener('click', () => this.onRollClick());
   }
 
@@ -672,7 +761,6 @@ class GameController {
     this.engine      = new RulesEngine(this.state);
     this._highlights = [];
 
-    // Hide winner overlay
     const ov = document.getElementById('winner-overlay');
     ov.style.display = 'none';
     ov.classList.remove('show');
@@ -684,39 +772,36 @@ class GameController {
   onRollClick() {
     if (!this.state || this.state.phase !== 'rolling') return;
 
-    // Animate the dice face
-    const diceFace = document.getElementById('dice-face');
-    diceFace.classList.remove('rolling');
-    void diceFace.offsetWidth; // reflow to restart animation
-    diceFace.classList.add('rolling');
+    const face = document.getElementById('dice-face');
+    face.classList.remove('rolling');
+    void face.offsetWidth;
+    face.classList.add('rolling');
 
     const result = this.engine.rollDice();
     if (!result) return;
 
-    // Update dice display
     document.getElementById('dice-value').textContent = result.roll;
-
-    this._updateHUD();
     this._highlights = [];
 
     if (!result.forfeited && !result.noMoves) {
       this._highlights = this._buildHighlights();
     }
 
+    this._updateHUD();
     this._render();
   }
 
   handleBoardTap(row, col) {
     if (!this.state || this.state.phase !== 'moving') return;
 
-    const tapped = this._highlights.find(h => h.r === row && h.c === col);
-    if (!tapped) {
+    const hit = this._highlights.find(h => h.r === row && h.c === col);
+    if (!hit) {
       this._highlights = [];
       this._render();
       return;
     }
 
-    const result = this.engine.applyMove(tapped.moveIndex);
+    const result = this.engine.applyMove(hit.moveIndex);
     this._highlights = [];
     this._updateHUD();
     this._render();
@@ -727,24 +812,20 @@ class GameController {
   }
 
   _buildHighlights() {
-    const highlights = [];
-    this.state.legalMoves.forEach((move, moveIndex) => {
-      const gridPos = this._posToGrid(move.newPos, this.state.activePlayer.colour);
-      if (!gridPos) return;
-      highlights.push({
-        r: gridPos[0], c: gridPos[1],
-        type: move.captures.length > 0 ? 'capture' : 'move',
-        moveIndex,
-      });
-    });
-    return highlights;
+    return this.state.legalMoves
+      .map((move, moveIndex) => {
+        const gp = this._posToGrid(move.newPos, this.state.activePlayer.colour);
+        if (!gp) return null;
+        return { r:gp[0], c:gp[1], type: move.captures.length > 0 ? 'capture':'move', moveIndex };
+      })
+      .filter(Boolean);
   }
 
   _posToGrid(pos, colour) {
     if (pos === 999 || pos === -1) return null;
     if (pos >= 100) {
-      const homeBase = { red:100, green:200, yellow:300, blue:400 }[colour];
-      return HOME_COL_COORDS[colour][pos - homeBase] || null;
+      const base = { red:100, green:200, yellow:300, blue:400 }[colour];
+      return HOME_COL_COORDS[colour][pos - base] || null;
     }
     return this.renderer.trackCoords[pos] || null;
   }
@@ -755,55 +836,39 @@ class GameController {
 
   _updateHUD() {
     if (!this.state) return;
-    const p     = this.state.activePlayer;
+    const p   = this.state.activePlayer;
+    const hex = { red:'#FF5252', green:'#69F0AE', yellow:'#FFD740', blue:'#40C4FF' }[p.colour];
+
+    document.getElementById('turn-dot').style.background = hex;
+    document.getElementById('turn-dot').style.boxShadow  = `0 0 8px ${hex}`;
+    document.getElementById('current-colour').textContent = p.colour.toUpperCase();
+    document.getElementById('current-colour').style.color = hex;
+
     const phase = this.state.phase;
-    const colourHex = { red:'#FF5252', green:'#69F0AE', yellow:'#FFD740', blue:'#40C4FF' };
-
-    // Turn badge
-    const dot = document.getElementById('turn-dot');
-    const col = document.getElementById('current-colour');
-    const hex = colourHex[p.colour];
-    dot.style.background = hex;
-    dot.style.boxShadow  = `0 0 8px ${hex}`;
-    col.textContent = p.colour.toUpperCase();
-    col.style.color = hex;
-
-    // Status text
     document.getElementById('status-text').textContent =
-      phase === 'rolling'  ? `${p.colour.toUpperCase()}'S TURN — TAP ROLL` :
-      phase === 'moving'   ? 'TAP A GLOWING SQUARE' :
-      phase === 'finished' ? `${this.state.winner.toUpperCase()} WINS!` : '';
+      phase === 'rolling'  ? '— TAP ROLL' :
+      phase === 'moving'   ? '— TAP SQUARE' :
+      phase === 'finished' ? '🏆 WINNER!' : '';
 
-    // Roll button
-    const btn = document.getElementById('btn-roll');
-    btn.disabled = phase !== 'rolling';
+    document.getElementById('btn-roll').disabled = phase !== 'rolling';
 
-    // Player pips — highlight active
     ['red','green','yellow','blue'].forEach(c => {
-      const pip = document.getElementById(`pip-${c}`);
-      if (!pip) return;
-      pip.classList.toggle('active', c === p.colour);
+      document.getElementById(`pip-${c}`)?.classList.toggle('active', c === p.colour);
     });
 
-    // Mana pips
     for (let i = 1; i <= 5; i++) {
-      const mp = document.getElementById(`mp${i}`);
-      if (mp) mp.classList.toggle('active', i <= p.mana);
+      document.getElementById(`mp${i}`)?.classList.toggle('active', i <= p.mana);
     }
 
-    // Last log entry
-    const logEl = document.getElementById('last-log');
-    if (logEl && this.state.log.length > 0) {
-      logEl.textContent = this.state.log[0];
-    }
+    const log = document.getElementById('last-log');
+    if (log && this.state.log.length > 0) log.textContent = this.state.log[0];
   }
 
   _showWinner() {
-    const overlay = document.getElementById('winner-overlay');
-    document.getElementById('winner-msg').textContent =
-      `${this.state.winner.toUpperCase()} WINS`;
-    overlay.style.display = 'flex';
-    overlay.classList.add('show');
+    document.getElementById('winner-msg').textContent = `${this.state.winner.toUpperCase()} WINS`;
+    const ov = document.getElementById('winner-overlay');
+    ov.style.display = 'flex';
+    ov.classList.add('show');
   }
 }
 

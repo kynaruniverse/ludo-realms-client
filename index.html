@@ -3,73 +3,47 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0A0F1A" />
+  <meta name="theme-color" content="#29B6F6" />
   <title>Ludo Realms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-
   <div id="app">
 
-    <!-- Ambient background particles -->
-    <div id="bg-particles">
-      <div class="particle"></div><div class="particle"></div>
-      <div class="particle"></div><div class="particle"></div>
-      <div class="particle"></div><div class="particle"></div>
-    </div>
-
-    <!-- Header -->
     <header id="game-header">
       <div id="logo-wrap">
-        <span id="logo">LUDO</span>
-        <span id="logo-sub">REALMS</span>
+        <span id="logo">🎲 Ludo Realms</span>
       </div>
-      <div id="status-wrap">
-        <div id="turn-badge">
-          <span id="turn-dot"></span>
-          <span id="current-colour">RED</span>
-        </div>
-        <div id="status-text">TAP ROLL TO BEGIN</div>
+      <div id="turn-badge">
+        <span id="turn-dot"></span>
+        <span id="current-colour">RED</span>
+        <span id="status-text">TAP ROLL</span>
       </div>
     </header>
 
-    <!-- Game area -->
     <main id="game-area">
-      <div id="board-wrap">
-        <canvas id="board-canvas"></canvas>
-      </div>
+      <canvas id="board-canvas"></canvas>
     </main>
 
-    <!-- Bottom HUD -->
     <footer id="game-hud">
-
-      <!-- Left: player tokens summary -->
       <div class="hud-block" id="hud-players">
         <div class="hud-label">PLAYERS</div>
         <div id="player-pips">
-          <div class="pip pip-red" id="pip-red"></div>
-          <div class="pip pip-green" id="pip-green"></div>
+          <div class="pip pip-red"    id="pip-red"></div>
+          <div class="pip pip-green"  id="pip-green"></div>
           <div class="pip pip-yellow" id="pip-yellow"></div>
-          <div class="pip pip-blue" id="pip-blue"></div>
+          <div class="pip pip-blue"   id="pip-blue"></div>
         </div>
       </div>
 
-      <!-- Centre: dice + roll button -->
       <div class="hud-block" id="hud-dice">
-        <div id="dice-wrap">
-          <div id="dice-face">
-            <span id="dice-value">?</span>
-          </div>
-        </div>
-        <button id="btn-roll">
-          <span id="btn-roll-text">ROLL</span>
-        </button>
+        <div id="dice-face"><span id="dice-value">?</span></div>
+        <button id="btn-roll">ROLL</button>
       </div>
 
-      <!-- Right: mana + log -->
       <div class="hud-block" id="hud-info">
         <div class="hud-label">MANA</div>
         <div id="mana-pips">
@@ -81,20 +55,16 @@
         </div>
         <div id="last-log"></div>
       </div>
-
     </footer>
 
   </div>
 
-  <!-- Winner overlay -->
   <div id="winner-overlay">
     <div id="winner-box">
-      <div id="winner-crown">♛</div>
+      <div id="winner-crown">🏆</div>
       <div id="winner-msg"></div>
       <div id="winner-sub">All tokens home!</div>
-      <button id="btn-restart" onclick="window.gameController.startGame(4)">
-        PLAY AGAIN
-      </button>
+      <button id="btn-restart" onclick="window.gameController.startGame(4)">PLAY AGAIN</button>
     </div>
   </div>
 
