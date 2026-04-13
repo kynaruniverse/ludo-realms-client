@@ -1,386 +1,379 @@
 /*
- * LUDO REALMS — app.js
- * Full application controller.
- * Handles: screen routing, game loop, AI turns, HUD updates,
- *          dice animation, power-up toasts, settings, win screen.
+ * LUDO REALMS — app.js v2
+ *
+ * BUG FIXES:
+ * 1. Rolling 6 in yard: highlight placed on YARD TOKEN (where it is)
+ *    not on destination track square. Player taps their token.
+ * 2. AI turn chaining: properly passes through all AI turns.
+ * 3. Extra turn: correctly stays with same player (human or AI).
+ * 4. _aiThinking reset: always cleared to prevent lockup.
  */
 'use strict';
 
-const App = (() => {
+const App = (()=>{
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  let _renderer    = null;
-  let _gameState   = null;
-  let _engine      = null;
-  let _aiPlayers   = {};   // { playerIndex: AIPlayer }
-  let _aiThinking  = false;
-  let _highlights  = [];
-  let _difficulty  = 'medium';
-  let _settings    = {sfx:true, music:false, animations:true, showAI:true};
-  let _toastTimer  = null;
+  let _board      = null;
+  let _gs         = null;   // GameState
+  let _eng        = null;   // RulesEngine
+  let _ai         = {};     // {playerIndex: AIPlayer}
+  let _aiThink    = false;
+  let _hl         = [];     // highlights
+  let _diff       = 'medium';
+  let _settings   = {sfx:true,music:false,anim:true,showAI:true};
+  let _stats      = {played:0,won:0,caps:0,pu:0};
+  let _toastT     = null;
 
-  const COLOURS = ['red','green','yellow','blue'];
-  const COLOUR_HEX = {
-    red:'#FF5252', green:'#69F0AE', yellow:'#FFD740', blue:'#40C4FF'
-  };
+  const COLS      = ['red','green','yellow','blue'];
+  const COL_HEX   = {red:'#E87060',green:'#68B870',yellow:'#E0A840',blue:'#5898D0'};
 
-  // ── Init ───────────────────────────────────────────────────────────────────
-
-  function init() {
-    _renderer = new window.BoardRenderer();
-    _renderer._onTap = handleBoardTap;
-    _loadSettings();
+  // ── Init ──────────────────────────────────────────────────────────────────
+  function init(){
+    _board = new window.BoardRenderer();
+    _board.onTap = _onBoardTap;
+    _loadData();
     showScreen('screen-home');
   }
 
-  // ── Screen routing ─────────────────────────────────────────────────────────
-
-  function showScreen(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    const el = document.getElementById(id);
-    if (el) el.classList.add('active');
-    // Trigger board resize if showing game screen
-    if (id === 'screen-game' && _renderer) {
-      setTimeout(() => _renderer._resize(), 50);
-    }
+  // ── Screens ───────────────────────────────────────────────────────────────
+  function showScreen(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById(id)?.classList.add('active');
+    if(id==='screen-game' && _board) setTimeout(()=>_board._resize(),80);
+    if(id==='screen-stats') _renderStats();
   }
 
-  function showDifficultySelect() {
-    showScreen('screen-difficulty');
+  function pauseGame(){
+    document.getElementById('ov-pause').classList.remove('hidden');
   }
 
-  function showPauseMenu() {
-    document.getElementById('overlay-pause').classList.remove('hidden');
+  function resumeGame(){
+    document.getElementById('ov-pause').classList.add('hidden');
   }
 
-  function resumeGame() {
-    document.getElementById('overlay-pause').classList.add('hidden');
-  }
+  // ── Start game ────────────────────────────────────────────────────────────
+  function startGame(diff){
+    _diff    = diff;
+    _ai      = {};
+    _aiThink = false;
+    _hl      = [];
 
-  // ── Game start ─────────────────────────────────────────────────────────────
-
-  function startGame(difficulty) {
-    _difficulty  = difficulty;
-    _aiPlayers   = {};
-    _aiThinking  = false;
-    _highlights  = [];
-
-    // Build AI opponents for players 1, 2, 3
-    const cfgs = window.AI_CONFIGS[difficulty] || window.AI_CONFIGS.medium;
-    cfgs.forEach((cfg, i) => {
-      const idx = i + 1;
-      if (idx < 4) {
-        _aiPlayers[idx] = new window.AIPlayer(cfg.difficulty, cfg.personality);
-      }
+    const cfgs = window.AI_CONFIGS[diff] || window.AI_CONFIGS.medium;
+    cfgs.forEach((cfg,i)=>{
+      if(i+1 < 4) _ai[i+1] = new window.AIPlayer(cfg.difficulty, cfg.personality);
     });
 
-    // Init game state and rules engine
-    _gameState = new window.GameState(4);
-    _engine    = new window.RulesEngine(_gameState);
+    _gs  = new window.GameState(4);
+    _eng = new window.RulesEngine(_gs);
 
-    // Hide overlays
-    document.getElementById('overlay-pause').classList.add('hidden');
-    document.getElementById('overlay-winner').classList.add('hidden');
+    document.getElementById('ov-pause').classList.add('hidden');
+    document.getElementById('ov-winner').classList.add('hidden');
+
+    _setDice(1);
+    _updateHUD();
+    _updateScores();
+    _board.render(_gs,[]);
 
     showScreen('screen-game');
-
-    // Reset dice display
-    _setDiceImg(1);
-    _updateHUD();
-    _renderer.render(_gameState, []);
-
-    // Chain to AI if first player is AI (unlikely but safe)
-    setTimeout(() => _maybeRunAI(), 300);
+    setTimeout(()=>_runAI(), 400);
   }
 
-  function rematch() {
-    startGame(_difficulty);
-  }
+  function rematch(){ startGame(_diff); }
 
-  // ── Roll button ────────────────────────────────────────────────────────────
-
-  function onRollClick() {
-    if (!_gameState || _gameState.phase !== 'rolling') return;
-    if (_isAITurn()) return;
+  // ── Roll (human) ──────────────────────────────────────────────────────────
+  function onRoll(){
+    if(!_gs || _gs.phase !== 'rolling') return;
+    if(_isAI()) return;
     _doRoll();
   }
 
-  function _doRoll() {
-    // Animate dice
-    const diceImg = document.getElementById('dice-img');
-    diceImg.classList.remove('rolling');
-    void diceImg.offsetWidth;
-    diceImg.classList.add('rolling');
+  function _doRoll(){
+    // Spin the dice
+    const img = document.getElementById('dice-img');
+    img.classList.remove('rolling');
+    void img.offsetWidth;
+    img.classList.add('rolling');
 
-    const result = _engine.rollDice();
-    if (!result) return;
+    const res = _eng.rollDice();
+    if(!res) return;
 
-    // Set dice image to rolled value
-    setTimeout(() => {
-      _setDiceImg(result.roll);
-      diceImg.classList.remove('rolling');
+    setTimeout(()=>{
+      _setDice(res.roll);
+      img.classList.remove('rolling');
     }, 280);
 
-    _highlights = [];
+    _hl = [];
 
-    if (result.forfeited) {
-      _setLog(`${_gameState.log[0]}`);
-    } else if (result.noMoves) {
-      _setLog(`${_gameState.log[0]}`);
-    } else {
-      _highlights = _buildHighlights();
-    }
-
-    _updateHUD();
-    _renderer.render(_gameState, _highlights);
-
-    if (result.forfeited || result.noMoves) {
-      setTimeout(() => _maybeRunAI(), 500);
-    }
-  }
-
-  // ── Board tap handler ──────────────────────────────────────────────────────
-
-  function handleBoardTap(row, col) {
-    if (!_gameState || _gameState.phase !== 'moving') return;
-    if (_isAITurn()) return;
-
-    const hit = _highlights.find(h => h.row === row && h.col === col);
-    if (!hit) {
-      _highlights = [];
-      _renderer.render(_gameState, []);
+    if(res.forfeited || res.noMoves){
+      _log(_gs.log[0] || '');
+      _updateHUD();
+      _board.render(_gs,[]);
+      setTimeout(()=>_runAI(), 500);
       return;
     }
 
-    _applyMove(hit.moveIndex);
+    // Build highlights with YARD FIX applied
+    _hl = _buildHL();
+    _log(`Rolled ${res.roll} — tap a move`);
+    _updateHUD();
+    _board.render(_gs, _hl);
   }
 
-  function _applyMove(moveIndex) {
-    const prevMana = _gameState.activePlayer.mana;
-    const result   = _engine.applyMove(moveIndex);
-    _highlights    = [];
+  // ── Board tap ─────────────────────────────────────────────────────────────
+  function _onBoardTap(row, col){
+    if(!_gs || _gs.phase !== 'moving') return;
+    if(_isAI()) return;
 
-    // Check if power-up was collected this move
-    const newPU = _gameState.log[0];
-    if (newPU && newPU.includes('power-up')) {
-      _showToast('⚡ ' + _gameState.activePlayer.colour.toUpperCase() + ' collected a power-up!');
+    const hit = _hl.find(h=>h.row===row && h.col===col);
+    if(!hit){
+      _hl = [];
+      _board.render(_gs,[]);
+      return;
     }
 
+    _doMove(hit.moveIndex);
+  }
+
+  function _doMove(idx){
+    const prevLog = _gs.log.length;
+    const res = _eng.applyMove(idx);
+
+    // Check if a power-up was collected
+    if(_gs.log.length > prevLog){
+      const latest = _gs.log[0];
+      if(latest.includes('power-up')){
+        _toast('⚡ Power-up collected!');
+        _stats.pu++;
+      }
+      if(latest.includes('captured')){
+        _stats.caps++;
+      }
+    }
+
+    _hl = [];
     _updateHUD();
     _updateScores();
-    _renderer.render(_gameState, []);
+    _board.render(_gs,[]);
 
-    if (result && result.won) {
-      setTimeout(() => _showWinner(), 500);
+    if(res && res.won){
+      _stats.played++;
+      if(_gs.winner === 'red') _stats.won++;
+      _saveData();
+      setTimeout(()=>_showWinner(), 500);
       return;
     }
 
-    // Chain AI
-    setTimeout(() => _maybeRunAI(), 300);
+    // Chain to next turn
+    setTimeout(()=>_runAI(), 250);
   }
 
-  // ── AI turn logic ──────────────────────────────────────────────────────────
-
-  function _isAITurn() {
-    if (!_gameState) return false;
-    return !!_aiPlayers[_gameState.currentPlayer];
+  // ── AI turns ──────────────────────────────────────────────────────────────
+  function _isAI(){
+    return !_gs ? false : !!_ai[_gs.currentPlayer];
   }
 
-  function _maybeRunAI() {
-    if (!_isAITurn() || _aiThinking) return;
-    if (!_gameState || _gameState.phase === 'finished') return;
+  function _runAI(){
+    if(!_isAI() || _aiThink) return;
+    if(!_gs || _gs.phase==='finished') return;
 
-    _aiThinking = true;
-    const ai    = _aiPlayers[_gameState.currentPlayer];
+    _aiThink = true;
+    const ai = _ai[_gs.currentPlayer];
 
-    // AI rolls after think delay
-    setTimeout(() => {
-      if (!_gameState || _gameState.phase !== 'rolling') {
-        _aiThinking = false; return;
+    setTimeout(()=>{
+      // Safety check
+      if(!_gs || _gs.phase!=='rolling'){
+        _aiThink=false; return;
       }
 
       _doRoll();
 
-      if (_gameState.phase !== 'moving') {
-        _aiThinking = false;
-        setTimeout(() => _maybeRunAI(), 400);
-        return;
+      if(_gs.phase!=='moving'){
+        // No move available — already chained by _doRoll
+        _aiThink=false; return;
       }
 
-      // AI picks move
-      const moves = _gameState.legalMoves;
-      ai.chooseMoveIndex(_gameState, moves).then(idx => {
-        if (!_gameState || _gameState.phase !== 'moving') {
-          _aiThinking = false; return;
+      // AI picks a move
+      const moves = _gs.legalMoves;
+      ai.chooseMoveIndex(_gs, moves).then(idx=>{
+        if(!_gs || _gs.phase!=='moving'){
+          _aiThink=false; return;
         }
 
-        // Show AI's chosen square briefly
+        // Flash the AI's chosen square
         const move = moves[idx];
-        if (move) {
-          const gp = _posToGrid(move.newPos, _gameState.activePlayer.colour);
-          if (gp) {
-            _renderer.render(_gameState, [{
-              row: gp[0], col: gp[1],
-              type: move.captures.length > 0 ? 'capture' : 'move',
-            }]);
+        if(move){
+          const gp = _posGrid(move.newPos, _gs.activePlayer.colour);
+          if(gp){
+            _board.render(_gs,[{row:gp[0],col:gp[1],type:move.captures.length?'capture':'move'}]);
           }
         }
 
-        setTimeout(() => {
-          _aiThinking = false;
-          _applyMove(idx);
-        }, 450);
-      });
-    }, ai.thinkDelay * 0.6);
+        setTimeout(()=>{
+          _aiThink=false;
+          _doMove(idx);
+        }, 420);
+      }).catch(()=>{ _aiThink=false; });
+
+    }, Math.round(ai.thinkDelay * 0.55));
   }
 
-  // ── Highlights builder ─────────────────────────────────────────────────────
+  // ── Highlight builder (KEY FIX HERE) ─────────────────────────────────────
+  function _buildHL(){
+    if(!_gs) return [];
+    return (_gs.legalMoves||[]).map((move,mi)=>{
+      let row, col;
 
-  function _buildHighlights() {
-    return (_gameState.legalMoves || [])
-      .map((move, moveIndex) => {
-        const gp = _posToGrid(move.newPos, _gameState.activePlayer.colour);
-        if (!gp) return null;
-        return {
-          row: gp[0], col: gp[1],
-          type: move.captures.length > 0 ? 'capture' : 'move',
-          moveIndex,
-        };
-      })
-      .filter(Boolean);
+      if(move.exitsYard){
+        // ── YARD EXIT FIX ──────────────────────────────────────────────────
+        // Player needs to tap their token IN THE YARD.
+        // Find which yard slot this token index occupies.
+        const colour = _gs.activePlayer.colour;
+        const ti     = move.tokenIndex;
+        const gc     = window.YARD_GRID[colour][ti];
+        if(!gc) return null;
+        [row,col] = [gc[0], gc[1]];
+      } else {
+        const gp = _posGrid(move.newPos, _gs.activePlayer.colour);
+        if(!gp) return null;
+        [row,col] = gp;
+      }
+
+      return {
+        row, col,
+        type: move.captures.length ? 'capture' : 'move',
+        moveIndex: mi,
+      };
+    }).filter(Boolean);
   }
 
-  function _posToGrid(pos, colour) {
-    if (pos === 999 || pos === -1) return null;
-    if (pos >= 100) {
-      const base = {red:100,green:200,yellow:300,blue:400}[colour];
-      return window.HOME_COL_COORDS[colour][pos - base] || null;
+  function _posGrid(pos, colour){
+    if(pos===999||pos===-1) return null;
+    if(pos>=100){
+      const base={red:100,green:200,yellow:300,blue:400}[colour];
+      return window.HOME_COLS[colour][pos-base]||null;
     }
-    return window.TRACK_COORDS[pos] || null;
+    return window.TRACK[pos]||null;
   }
 
-  // ── HUD updates ────────────────────────────────────────────────────────────
+  // ── HUD ───────────────────────────────────────────────────────────────────
+  function _updateHUD(){
+    if(!_gs) return;
+    const p    = _gs.activePlayer;
+    const ai   = _isAI();
+    const ph   = _gs.phase;
+    const hex  = COL_HEX[p.colour];
 
-  function _updateHUD() {
-    if (!_gameState) return;
-    const p       = _gameState.activePlayer;
-    const isAI    = _isAITurn();
-    const phase   = _gameState.phase;
-    const hex     = COLOUR_HEX[p.colour];
-
-    // Topbar colour indicator
-    const dot   = document.getElementById('turn-colour-dot');
-    const label = document.getElementById('turn-colour-label');
-    const status= document.getElementById('turn-status-text');
+    const dot  = document.getElementById('turn-dot');
+    const name = document.getElementById('turn-name');
+    const hint = document.getElementById('turn-hint');
 
     dot.style.background = hex;
     dot.style.boxShadow  = `0 0 8px ${hex}`;
-    label.textContent    = p.colour.toUpperCase();
-    label.style.color    = hex;
+    name.textContent     = p.colour.toUpperCase();
+    name.style.color     = hex;
 
-    status.textContent =
-      phase === 'finished' ? '🏆 WINNER!' :
-      isAI && phase === 'rolling' ? '— THINKING...' :
-      isAI && phase === 'moving'  ? '— CHOOSING...' :
-      phase === 'rolling'  ? '— TAP ROLL' :
-      phase === 'moving'   ? '— TAP SQUARE' : '';
+    hint.textContent =
+      ph==='finished' ? '🏆 WINNER!' :
+      ai&&ph==='rolling' ? '— THINKING...' :
+      ai&&ph==='moving'  ? '— CHOOSING...' :
+      ph==='rolling'  ? '— TAP ROLL' :
+      ph==='moving'   ? '— TAP TOKEN/SQUARE' : '';
 
-    // Roll button
-    const btn = document.getElementById('btn-roll');
-    btn.disabled = (phase !== 'rolling') || isAI;
-    document.getElementById('btn-roll-label').textContent = 'ROLL';
+    document.getElementById('btn-roll').disabled = ph!=='rolling'||ai;
+    document.getElementById('mana-val').textContent = p.mana+'/5';
 
-    // Mana
-    document.getElementById('mana-count').textContent = p.mana + '/5';
-
-    // Active player highlight
-    COLOURS.forEach(c => {
-      const el = document.getElementById('cp-' + c);
-      if (el) el.classList.toggle('active-player', c === p.colour);
-    });
-
-    // Log
-    if (_gameState.log.length > 0) {
-      _setLog(_gameState.log[0]);
-    }
-  }
-
-  function _updateScores() {
-    if (!_gameState) return;
-    _gameState.players.forEach(p => {
-      const finished = p.tokens.filter(t => t === 999).length;
-      const el = document.getElementById('score-' + p.colour);
-      if (el) el.textContent = finished + '/4';
+    // Highlight active player score pill
+    COLS.forEach(c=>{
+      document.getElementById('sp-'+c)?.classList.toggle('active', c===p.colour);
     });
   }
 
-  function _setLog(msg) {
-    const el = document.getElementById('log-text');
-    if (el) el.textContent = msg;
+  function _updateScores(){
+    if(!_gs) return;
+    _gs.players.forEach(p=>{
+      const n = p.tokens.filter(t=>t===999).length;
+      const el = document.getElementById('sn-'+p.colour);
+      if(el) el.textContent = n+'/4';
+    });
   }
 
-  function _setDiceImg(val) {
+  function _setDice(val){
     const img = document.getElementById('dice-img');
-    if (img) img.src = `assets/dice-${val}.svg`;
+    if(img) img.src=`assets/dice-${val}.svg`;
   }
 
-  // ── Winner screen ──────────────────────────────────────────────────────────
-
-  function _showWinner() {
-    const winner = _gameState.winner;
-    const isHuman = _gameState.players[0].colour === winner;
-    document.getElementById('winner-title').textContent = winner.toUpperCase() + ' WINS!';
-    document.getElementById('winner-title').style.color = COLOUR_HEX[winner];
-    document.getElementById('winner-sub').textContent = 'All tokens home!';
-    document.getElementById('winner-human-msg').textContent =
-      isHuman ? '🎉 You won! Well played!' : '🤖 The AI wins this round...';
-    document.getElementById('overlay-winner').classList.remove('hidden');
+  function _log(msg){
+    const el = document.getElementById('game-log');
+    if(el) el.textContent = msg;
   }
 
-  // ── Toast ──────────────────────────────────────────────────────────────────
+  // ── Winner ────────────────────────────────────────────────────────────────
+  function _showWinner(){
+    const w  = _gs.winner;
+    const me = _gs.players[0].colour===w;
+    document.getElementById('ov-winner-name').textContent  = w.toUpperCase()+' WINS!';
+    document.getElementById('ov-winner-name').style.color  = COL_HEX[w];
+    document.getElementById('ov-winner-msg').textContent   =
+      me ? '🎉 You won! Great game!' : '🤖 AI wins this round…';
+    document.getElementById('ov-winner').classList.remove('hidden');
+  }
 
-  function _showToast(msg) {
-    const el = document.getElementById('toast-powerup');
-    document.getElementById('toast-text').textContent = msg;
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function _toast(msg){
+    const el=document.getElementById('toast');
+    document.getElementById('toast-msg').textContent=msg;
     el.classList.remove('hidden');
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+    clearTimeout(_toastT);
+    _toastT=setTimeout(()=>el.classList.add('hidden'),2400);
   }
 
-  // ── Settings ───────────────────────────────────────────────────────────────
-
-  function saveSetting(key, value) {
-    _settings[key] = value;
-    try { localStorage.setItem('lr_settings', JSON.stringify(_settings)); } catch(e){}
+  // ── Settings ──────────────────────────────────────────────────────────────
+  function setSetting(key,val){
+    _settings[key]=val;
+    _saveData();
   }
 
-  function _loadSettings() {
-    try {
-      const s = JSON.parse(localStorage.getItem('lr_settings') || '{}');
-      Object.assign(_settings, s);
-      if (_settings.sfx   !== undefined) document.getElementById('snd-sfx').checked   = _settings.sfx;
-      if (_settings.music !== undefined) document.getElementById('snd-music').checked  = _settings.music;
-      if (_settings.animations !== undefined) document.getElementById('opt-anim').checked = _settings.animations;
-      if (_settings.showAI !== undefined) document.getElementById('opt-ai-show').checked  = _settings.showAI;
-    } catch(e){}
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  function _renderStats(){
+    document.getElementById('st-played').textContent = _stats.played;
+    document.getElementById('st-won').textContent    = _stats.won;
+    document.getElementById('st-rate').textContent   =
+      _stats.played ? Math.round(_stats.won/_stats.played*100)+'%' : '—';
+    document.getElementById('st-caps').textContent   = _stats.caps;
+    document.getElementById('st-pu').textContent     = _stats.pu;
   }
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  function resetStats(){
+    _stats={played:0,won:0,caps:0,pu:0};
+    _saveData();
+    _renderStats();
+  }
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+  function _saveData(){
+    try{
+      localStorage.setItem('lr',JSON.stringify({settings:_settings,stats:_stats}));
+    }catch(e){}
+  }
+
+  function _loadData(){
+    try{
+      const d=JSON.parse(localStorage.getItem('lr')||'{}');
+      if(d.settings) Object.assign(_settings,d.settings);
+      if(d.stats)    Object.assign(_stats,d.stats);
+      // Apply settings to UI
+      ['sfx','music','anim','showAI'].forEach((k,i)=>{
+        const ids=['set-sfx','set-music','set-anim','set-ai'];
+        const el=document.getElementById(ids[i]);
+        if(el && _settings[k]!==undefined) el.checked=_settings[k];
+      });
+    }catch(e){}
+  }
+
   return {
-    init,
-    showScreen,
-    showDifficultySelect,
-    showPauseMenu,
-    resumeGame,
-    startGame,
-    rematch,
-    onRollClick,
-    saveSetting,
-    _showModeSelect: showDifficultySelect,
-    get _lastDifficulty() { return _difficulty; },
+    init, showScreen, pauseGame, resumeGame,
+    startGame, rematch, onRoll, setSetting, resetStats,
   };
 
 })();
 
-// Boot
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded',()=>App.init());
