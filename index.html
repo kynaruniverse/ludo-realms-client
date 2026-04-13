@@ -1,74 +1,321 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#29B6F6" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="theme-color" content="#0D1B2A"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Ludo Realms</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
-  <div id="app">
 
-    <header id="game-header">
-      <div id="logo-wrap">
-        <span id="logo">🎲 Ludo Realms</span>
-      </div>
-      <div id="turn-badge">
-        <span id="turn-dot"></span>
-        <span id="current-colour">RED</span>
-        <span id="status-text">TAP ROLL</span>
-      </div>
-    </header>
-
-    <main id="game-area">
-      <canvas id="board-canvas"></canvas>
-    </main>
-
-    <footer id="game-hud">
-      <div class="hud-block" id="hud-players">
-        <div class="hud-label">PLAYERS</div>
-        <div id="player-pips">
-          <div class="pip pip-red"    id="pip-red"></div>
-          <div class="pip pip-green"  id="pip-green"></div>
-          <div class="pip pip-yellow" id="pip-yellow"></div>
-          <div class="pip pip-blue"   id="pip-blue"></div>
-        </div>
-      </div>
-
-      <div class="hud-block" id="hud-dice">
-        <div id="dice-face"><span id="dice-value">?</span></div>
-        <button id="btn-roll">ROLL</button>
-      </div>
-
-      <div class="hud-block" id="hud-info">
-        <div class="hud-label">MANA</div>
-        <div id="mana-pips">
-          <div class="mana-pip" id="mp1"></div>
-          <div class="mana-pip" id="mp2"></div>
-          <div class="mana-pip" id="mp3"></div>
-          <div class="mana-pip" id="mp4"></div>
-          <div class="mana-pip" id="mp5"></div>
-        </div>
-        <div id="last-log"></div>
-      </div>
-    </footer>
-
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 1: HOME
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-home" class="screen active">
+  <div class="home-bg">
+    <div class="home-orb orb-1"></div>
+    <div class="home-orb orb-2"></div>
+    <div class="home-orb orb-3"></div>
   </div>
 
-  <div id="winner-overlay">
-    <div id="winner-box">
-      <div id="winner-crown">🏆</div>
-      <div id="winner-msg"></div>
-      <div id="winner-sub">All tokens home!</div>
-      <button id="btn-restart" onclick="window.gameController.startGame(4)">PLAY AGAIN</button>
+  <div class="home-content">
+    <!-- Logo -->
+    <div class="home-logo-wrap">
+      <div class="home-logo-icon">🎲</div>
+      <div class="home-logo-text">LUDO</div>
+      <div class="home-logo-sub">REALMS</div>
+    </div>
+
+    <!-- Token preview row -->
+    <div class="home-tokens">
+      <img src="assets/token-red.svg"    class="home-token ht-red"    alt="red"/>
+      <img src="assets/token-green.svg"  class="home-token ht-green"  alt="green"/>
+      <img src="assets/token-yellow.svg" class="home-token ht-yellow" alt="yellow"/>
+      <img src="assets/token-blue.svg"   class="home-token ht-blue"   alt="blue"/>
+    </div>
+
+    <!-- Main buttons -->
+    <div class="home-btns">
+      <button class="home-btn home-btn-play" onclick="App.showDifficultySelect()">
+        <span class="hb-icon">▶</span>
+        <span class="hb-label">PLAY GAME</span>
+      </button>
+      <div class="home-btn-row">
+        <button class="home-btn home-btn-sm" onclick="App.showScreen('screen-rules')">
+          <span class="hb-icon">📖</span>
+          <span class="hb-label">RULES</span>
+        </button>
+        <button class="home-btn home-btn-sm" onclick="App.showScreen('screen-settings')">
+          <span class="hb-icon">⚙️</span>
+          <span class="hb-label">SETTINGS</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="home-version">v1.0 · Ludo Realms</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 2: DIFFICULTY SELECT
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-difficulty" class="screen">
+  <div class="sub-header">
+    <button class="back-btn" onclick="App.showScreen('screen-home')">‹ Back</button>
+    <span class="sub-title">Choose Difficulty</span>
+  </div>
+
+  <div class="diff-content">
+    <div class="diff-info-row">
+      <div class="player-badge player-red">👤 You = RED</div>
+      <div class="player-badge player-ai">🤖 3 AI opponents</div>
+    </div>
+
+    <div class="diff-cards">
+      <button class="diff-card" onclick="App.startGame('easy')">
+        <div class="diff-emoji">😊</div>
+        <div class="diff-name">EASY</div>
+        <div class="diff-desc">Chill game, lots of fun.<br/>Great for learning.</div>
+        <div class="diff-stars">★☆☆</div>
+      </button>
+      <button class="diff-card diff-card-featured" onclick="App.startGame('medium')">
+        <div class="diff-badge-top">POPULAR</div>
+        <div class="diff-emoji">🎯</div>
+        <div class="diff-name">MEDIUM</div>
+        <div class="diff-desc">Smart AI, fair fights.<br/>Balanced challenge.</div>
+        <div class="diff-stars">★★☆</div>
+      </button>
+      <button class="diff-card" onclick="App.startGame('hard')">
+        <div class="diff-emoji">🔥</div>
+        <div class="diff-name">HARD</div>
+        <div class="diff-desc">Ruthless AI strategy.<br/>Think before you move.</div>
+        <div class="diff-stars">★★★</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 3: GAME
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-game" class="screen">
+
+  <!-- Top bar -->
+  <div id="game-topbar">
+    <button class="topbar-btn" id="btn-menu" onclick="App.showPauseMenu()">☰</button>
+    <div id="topbar-centre">
+      <div id="turn-colour-dot"></div>
+      <span id="turn-colour-label">RED</span>
+      <span id="turn-status-text">— TAP ROLL</span>
+    </div>
+    <div id="topbar-right">
+      <div id="mana-display">
+        <span class="mana-icon">✦</span>
+        <span id="mana-count">3</span>
+      </div>
     </div>
   </div>
 
-  <script src="js/game.js"></script>
-  <script src="js/board.js"></script>
+  <!-- Board area -->
+  <div id="game-board-area">
+    <div id="board-wrap">
+      <img id="board-img" src="assets/board_v3.svg" alt="board"/>
+      <canvas id="board-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Bottom controls -->
+  <div id="game-controls">
+
+    <!-- Player tokens indicator -->
+    <div id="ctrl-players">
+      <div class="ctrl-player" id="cp-red">
+        <img src="assets/token-red.svg"    class="ctrl-token" alt="red"/>
+        <div class="ctrl-score" id="score-red">0</div>
+      </div>
+      <div class="ctrl-player" id="cp-green">
+        <img src="assets/token-green.svg"  class="ctrl-token" alt="green"/>
+        <div class="ctrl-score" id="score-green">0</div>
+      </div>
+      <div class="ctrl-player" id="cp-yellow">
+        <img src="assets/token-yellow.svg" class="ctrl-token" alt="yellow"/>
+        <div class="ctrl-score" id="score-yellow">0</div>
+      </div>
+      <div class="ctrl-player" id="cp-blue">
+        <img src="assets/token-blue.svg"   class="ctrl-token" alt="blue"/>
+        <div class="ctrl-score" id="score-blue">0</div>
+      </div>
+    </div>
+
+    <!-- Dice + Roll -->
+    <div id="ctrl-dice">
+      <div id="dice-display">
+        <img id="dice-img" src="assets/dice-1.svg" alt="dice"/>
+      </div>
+      <button id="btn-roll" onclick="App.onRollClick()">
+        <span id="btn-roll-label">ROLL</span>
+      </button>
+    </div>
+
+    <!-- Log -->
+    <div id="ctrl-log">
+      <div id="log-text">Game started!</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 4: RULES
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-rules" class="screen">
+  <div class="sub-header">
+    <button class="back-btn" onclick="App.showScreen('screen-home')">‹ Back</button>
+    <span class="sub-title">How to Play</span>
+  </div>
+  <div class="rules-content">
+    <div class="rule-card">
+      <div class="rule-icon">🎲</div>
+      <div class="rule-body">
+        <div class="rule-title">Roll to Move</div>
+        <div class="rule-text">Tap ROLL each turn. Tap a glowing square to move your token there.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">🚪</div>
+      <div class="rule-body">
+        <div class="rule-title">Exit Your Yard</div>
+        <div class="rule-text">Roll a 6 to bring a token out of your yard onto the board. Rolling a 6 gives you an extra turn.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">💥</div>
+      <div class="rule-body">
+        <div class="rule-title">Captures</div>
+        <div class="rule-text">Land on an opponent's token to send it back to their yard. Stars are safe squares — no captures there.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">🛡️</div>
+      <div class="rule-body">
+        <div class="rule-title">Blocks</div>
+        <div class="rule-text">Two of your tokens on the same square form a block. Opponents cannot pass through or capture a block.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">🏠</div>
+      <div class="rule-body">
+        <div class="rule-title">Getting Home</div>
+        <div class="rule-text">Guide all 4 tokens along the coloured home column into the centre. You need an exact roll to enter each home square.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">⚡</div>
+      <div class="rule-body">
+        <div class="rule-title">Power-Ups</div>
+        <div class="rule-text">Land on a ⚡ square to collect a power-up. Use it on your turn for special effects like guaranteed 6, swapping tokens, or cursing opponents.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">✦</div>
+      <div class="rule-body">
+        <div class="rule-title">Mana</div>
+        <div class="rule-text">Power-ups cost mana. You start with 3, gain 1 per turn, up to a max of 5. Shown in the top-right during a game.</div>
+      </div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-icon">🏆</div>
+      <div class="rule-body">
+        <div class="rule-title">Win Condition</div>
+        <div class="rule-text">First player to move all 4 tokens to the centre finish wins!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 5: SETTINGS
+═══════════════════════════════════════════════════════════ -->
+<div id="screen-settings" class="screen">
+  <div class="sub-header">
+    <button class="back-btn" onclick="App.showScreen('screen-home')">‹ Back</button>
+    <span class="sub-title">Settings</span>
+  </div>
+  <div class="settings-content">
+    <div class="setting-group">
+      <div class="setting-label">Sound Effects</div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="snd-sfx" checked onchange="App.saveSetting('sfx', this.checked)"/>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">Music</div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="snd-music" onchange="App.saveSetting('music', this.checked)"/>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">Animations</div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="opt-anim" checked onchange="App.saveSetting('animations', this.checked)"/>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">Show AI Thinking</div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="opt-ai-show" checked onchange="App.saveSetting('showAI', this.checked)"/>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-version">Ludo Realms v1.0<br/>Built with ❤️ for mobile</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     OVERLAYS
+═══════════════════════════════════════════════════════════ -->
+
+<!-- Pause menu -->
+<div id="overlay-pause" class="overlay hidden">
+  <div class="overlay-box">
+    <div class="overlay-title">⏸ PAUSED</div>
+    <button class="ov-btn ov-btn-primary" onclick="App.resumeGame()">▶ RESUME</button>
+    <button class="ov-btn" onclick="App.showScreen('screen-difficulty')">🔁 NEW GAME</button>
+    <button class="ov-btn" onclick="App.showScreen('screen-home')">🏠 MAIN MENU</button>
+  </div>
+</div>
+
+<!-- Winner screen -->
+<div id="overlay-winner" class="overlay hidden">
+  <div class="overlay-box winner-box">
+    <div class="winner-trophy">🏆</div>
+    <div class="winner-title" id="winner-title">RED WINS!</div>
+    <div class="winner-sub" id="winner-sub">All tokens home!</div>
+    <div class="winner-is-human" id="winner-human-msg"></div>
+    <button class="ov-btn ov-btn-primary" onclick="App.rematch()">🔁 REMATCH</button>
+    <button class="ov-btn" onclick="App.showScreen('screen-home')">🏠 MAIN MENU</button>
+  </div>
+</div>
+
+<!-- Power-up collected toast -->
+<div id="toast-powerup" class="toast hidden">
+  <span id="toast-text">⚡ Power-up collected!</span>
+</div>
+
+<script src="js/game.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/board.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

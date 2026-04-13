@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 80" width="60" height="80">
+  <defs>
+    <radialGradient id="head-r" cx="38%" cy="32%" r="60%">
+      <stop offset="0%"   stop-color="#FF8A80"/>
+      <stop offset="50%"  stop-color="#E53935"/>
+      <stop offset="100%" stop-color="#B71C1C"/>
+    </radialGradient>
+    <radialGradient id="base-r" cx="38%" cy="30%" r="65%">
+      <stop offset="0%"   stop-color="#EF5350"/>
+      <stop offset="100%" stop-color="#B71C1C"/>
+    </radialGradient>
+    <filter id="ps" x="-20%" y="-10%" width="150%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#00000055"/>
+    </filter>
+  </defs>
+  <g filter="url(#ps)">
+    <!-- Base oval -->
+    <ellipse cx="30" cy="68" rx="22" ry="9" fill="url(#base-r)"/>
+    <ellipse cx="30" cy="68" rx="22" ry="9" fill="none" stroke="#B71C1C" stroke-width="1"/>
+    <!-- Neck -->
+    <rect x="24" y="44" width="12" height="18" rx="3" fill="#C62828"/>
+    <!-- Head -->
+    <circle cx="30" cy="36" r="16" fill="url(#head-r)"/>
+    <circle cx="30" cy="36" r="16" fill="none" stroke="#B71C1C" stroke-width="1"/>
+    <!-- Specular -->
+    <ellipse cx="24" cy="30" rx="5" ry="4" fill="rgba(255,255,255,0.55)"/>
+  </g>
+</svg>
