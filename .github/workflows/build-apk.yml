@@ -1,0 +1,37 @@
+name: Build LudoForge APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Copy web files to Android assets
+        run: |
+          mkdir -p platform/android/app/src/main/assets
+          cp index.html platform/android/app/src/main/assets/
+          cp -r engine render ai ui platform/android/app/src/main/assets/
+
+      - name: Build Debug APK
+        working-directory: ./platform/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoForge-Debug-APK
+          path: platform/android/app/build/outputs/apk/debug/app-debug.apk
