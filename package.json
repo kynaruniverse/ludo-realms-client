@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "God-Tier Ludo Game",
   "main": "index.html",
+  "type": "module",
   "scripts": {
     "build": "echo 'No build step required'",
     "cap:add": "npx cap add android",
