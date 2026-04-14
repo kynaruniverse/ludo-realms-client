@@ -1,0 +1,14 @@
+{
+  "appId": "com.godtier.ludo",
+  "appName": "Ludo Master",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}

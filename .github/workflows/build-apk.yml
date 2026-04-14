@@ -1,37 +1,54 @@
-name: Build LudoForge APK
+name: Build Android APK
 
 on:
   push:
     branches: [ main ]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate game logic
+        run: node validate.js
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
+          java-version: '17'
 
-      - name: Copy web files to Android assets
-        run: |
-          mkdir -p platform/android/app/src/main/assets
-          cp index.html platform/android/app/src/main/assets/
-          cp -r engine render ai ui platform/android/app/src/main/assets/
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Build Debug APK
-        working-directory: ./platform/android
+      - name: Install Capacitor
+        run: npm install -g @capacitor/cli
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync
+
+      - name: Build APK
         run: |
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LudoForge-Debug-APK
-          path: platform/android/app/build/outputs/apk/debug/app-debug.apk
+          name: ludo-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
